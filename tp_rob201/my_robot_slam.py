@@ -67,10 +67,10 @@ class MyRobotSlam(RobotAbstract):
     def control_tp2(self):
         """
         Control function for TP2
-        Main control function with full SLAM, random exploration and path planning
+        Main control function with full SLAM, random exploration and path pla nning
         """
         pose = self.odometer_values()
-        goal = [0,0,0]
+        goal = [100,0,0]
 
         # Compute new command speed to perform obstacle avoidance
         command = potential_field_control(self.lidar(), pose, goal)

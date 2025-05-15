@@ -3,22 +3,77 @@
 import random
 import numpy as np
 
+last_turn_direction = None
 
 def reactive_obst_avoid(lidar):
     """
-    Simple obstacle avoidance
-    lidar : placebot object with lidar data
+    Simple obstacle avoidance - detects walls in front and turns toward open space
+    lidar: placebot object with lidar data
     """
-    # TODO for TP1
-
+    # Get lidar distance readings
     laser_dist = lidar.get_sensor_values()
-    speed = 0.0
+    
+    # Parameters
+    safe_distance = 150  # Start reacting when obstacle is within this distance
+    critical_distance = 50  # Distance for more aggressive avoidance
+    default_speed = 0.3  # Normal forward speed
+    medium_speed = 0.2  # Speed when approaching obstacles
+    min_speed = 0.1  # Minimum speed when approaching obstacles
+    
+    # Initialize speeds
+    speed = default_speed
     rotation_speed = 0.0
 
-    command = {"forward": speed,
-               "rotation": rotation_speed}
+    # Get total number of lidar readings
+    num_readings = len(laser_dist)
+    if num_readings == 0:
+        return {"forward": 0.0, "rotation": 0.0}
+    
+    """ front_indices = (60,120)
+    left_indices = (0, 60)
+    right_indices = (120, 180) """
 
+    front_indices = (170,190)
+    left_indices = (190,315)
+    right_indices = (45, 170)
+    
+    # Get minimum distance in each region
+    front_distances = [laser_dist[i] for i in front_indices]
+    left_distances = [laser_dist[i] for i in left_indices]
+    right_distances = [laser_dist[i] for i in right_indices]
+    
+    min_front = min(front_distances) if front_distances else float('inf')
+    min_left = min(left_distances) if left_distances else float('inf')
+    min_right = min(right_distances) if right_distances else float('inf')
+    
+    # Calculate speed based on front distance
+    print(f"min_front: {min_front:.2f}, min_left: {min_left:.2f}, min_right: {min_right:.2f}")
+    if min_front < safe_distance:
+        speed = medium_speed
+        if min_left > min_right:
+            # More space to the left, turn left
+            rotation_speed = 0.5 
+        else:
+            # More space to the right, turn right
+            rotation_speed = -0.5
+    if min_front < critical_distance:
+        speed = min_speed
+    else:
+        speed = default_speed
+
+    if (min_front < critical_distance) and (min_left < critical_distance) and (min_right < critical_distance):
+        # If all directions are blocked, stop
+        speed = -0.1
+        rotation_speed = 0.6
+    
+    # Create command to return
+    command = {
+        "forward": speed,
+        "rotation": rotation_speed
+    }
+    
     return command
+
 
 
 def potential_field_control(lidar, current_pose, goal_pose):
@@ -33,7 +88,98 @@ def potential_field_control(lidar, current_pose, goal_pose):
     """
     # TODO for TP2
 
-    command = {"forward": 0,
-               "rotation": 0}
+    # Calcul du vecteur de distance
+    distance_vector = goal_pose[:2] - current_pose[:2]
+    distance = np.linalg.norm(distance_vector)
+    
+    # Paramètres
+    K_goal = 1.0         # Coefficient attractif
+    d_lim = 100         # Rayon du potentiel quadratique
+    stop_threshold = 10  # Seuil d'arrêt
+    dsafe = 500         # Distance de sécurité pour l'obstacle
+    K_obs = 400         # Coefficient répulsif
+    
+    # Condition d'arrêt
+    if distance < stop_threshold:
+        print("Objectif atteint, arrêt")
+        return {"forward": 0.0, "rotation": 0.0}
+    
+    # Gradient attractif
+    if distance > d_lim:
+        grad_att = (K_goal / distance) * distance_vector
+    else:
+        grad_att = (K_goal / d_lim) * distance_vector
+
+    # Gradient répulsif
+    grad_rep = np.array([0.0, 0.0])
+    lidar_distances = lidar.get_sensor_values()
+    lidar_angles = lidar.get_ray_angles()
+    
+    for i in range(len(lidar_distances)):
+        d = lidar_distances[i]
+        if d < dsafe:
+            angle = lidar_angles[i]
+            obs_position = np.array([np.cos(angle), np.sin(angle)]) * d  # en frame robot
+            # print(f"Obstacle detected at distance {d:.2f} at angle {angle:.2f} rad")
+            # Repulsive gradient formula
+            rep = K_obs * ((1.0 / d) - (1.0 / dsafe)) / (d ** 3) * (obs_position)
+            # Peso maior para obstáculos frontais
+            weight = np.exp(-abs(angle))  # máximo para 0 rad (frente), decai pros lados
+            grad_rep += weight * rep
+    
+
+    # Gradient total
+    # total_grad = grad_att + grad_rep
+
+    exploration_force = 0.05 * np.random.uniform(-1, 1, size=2)
+    total_grad = grad_att + grad_rep + exploration_force
+
+    # Direction souhaitée
+    grad_angle = np.arctan2(total_grad[1], total_grad[0])
+    
+    # Erreur d’orientation
+    heading_error = grad_angle - current_pose[2]
+    heading_error = np.arctan2(np.sin(heading_error), np.cos(heading_error))
+
+    min_distance = min(lidar_distances)
+    print(f"min_distance: {min_distance:.2f}")
+    # heading_error: radianos (-pi a pi)
+    # min_distance: em metros
+
+    # Variações de velocidade baseadas no erro de orientação
+    if abs(heading_error) > 0.5:
+        forward_speed = 0.0
+    elif abs(heading_error) > 0.1:
+        forward_speed = 0.1
+    else:
+        if min_distance < 30:
+            forward_speed = 0.1  # anda devagar perto da parede
+            print("anda devagar")
+        else:
+            forward_speed = 0.3  # anda rápido se longe da parede e bem alinhado
+
+    # Variação do ganho de rotação baseada na distância ao obstáculo
+    if min_distance < 30:
+        print
+        k_rot = 1.0  # gira mais forte se perto
+    else:
+        k_rot = 0.2  # gira normal
+
+    rotation_speed = k_rot * heading_error
+
+
+    # Normalisation des vitesses
+    forward_speed = np.clip(forward_speed, -1.0, 1.0)
+    rotation_speed = np.clip(rotation_speed, -1.0, 1.0)
+
+    command = {
+        "forward": forward_speed,
+        "rotation": rotation_speed
+    }
+
+    print(f"pose: {current_pose}")
+    print(f"heading_error: {heading_error}")
+    print(f"Distance: {distance:.2f}, Gradient att: {grad_att}, Gradient rep: {grad_rep}")
+    print(f"Command: forward={forward_speed:.2f}, rotation={rotation_speed:.2f}")
 
     return command
