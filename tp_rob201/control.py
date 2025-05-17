@@ -97,7 +97,18 @@ def potential_field_control(lidar, current_pose, goal_pose):
     d_lim = 100         # Rayon du potentiel quadratique
     stop_threshold = 10  # Seuil d'arrêt
     dsafe = 500         # Distance de sécurité pour l'obstacle
-    K_obs = 400         # Coefficient répulsif
+    K_obs = 300         # Coefficient répulsif
+
+    # Parameters
+    safe_distance = 150  # Start reacting when obstacle is within this distance
+    critical_distance = 50  # Distance for more aggressive avoidance
+    default_speed = 0.4  # Normal forward speed
+    medium_speed = 0.3  # Speed when approaching obstacles
+    min_speed = 0.2  # Minimum speed when approaching obstacles
+    
+    # Initialize speeds
+    speed = default_speed
+    rotation_speed = 0.0
     
     # Condition d'arrêt
     if distance < stop_threshold:
@@ -129,10 +140,10 @@ def potential_field_control(lidar, current_pose, goal_pose):
     
 
     # Gradient total
-    # total_grad = grad_att + grad_rep
-
-    exploration_force = 0.05 * np.random.uniform(-1, 1, size=2)
-    total_grad = grad_att + grad_rep + exploration_force
+    total_grad = grad_att + grad_rep
+    if np.linalg.norm(total_grad) < 0.01:
+        exploration_force = np.random.uniform(-0.5, 0.5, size=2)
+        total_grad += exploration_force
 
     # Direction souhaitée
     grad_angle = np.arctan2(total_grad[1], total_grad[0])
@@ -141,8 +152,20 @@ def potential_field_control(lidar, current_pose, goal_pose):
     heading_error = grad_angle - current_pose[2]
     heading_error = np.arctan2(np.sin(heading_error), np.cos(heading_error))
 
-    min_distance = min(lidar_distances)
-    print(f"min_distance: {min_distance:.2f}")
+    front_indices = (160,200)
+    left_indices = (250,290)
+    right_indices = (70, 110)
+    
+    # Get minimum distance in each region
+    front_distances = [lidar_distances[i] for i in front_indices]
+    left_distances = [lidar_distances[i] for i in left_indices]
+    right_distances = [lidar_distances[i] for i in right_indices]
+    
+    min_front = min(front_distances) if front_distances else float('inf')
+    min_left = min(left_distances) if left_distances else float('inf')
+    min_right = min(right_distances) if right_distances else float('inf')
+    # print(f"min_front: {min_front:.2f}") #min_left: {min_left:.2f}, min_right: {min_right:.2f}")
+
     # heading_error: radianos (-pi a pi)
     # min_distance: em metros
 
@@ -150,22 +173,34 @@ def potential_field_control(lidar, current_pose, goal_pose):
     if abs(heading_error) > 0.5:
         forward_speed = 0.0
     elif abs(heading_error) > 0.1:
-        forward_speed = 0.1
+        forward_speed = medium_speed 
     else:
-        if min_distance < 30:
-            forward_speed = 0.1  # anda devagar perto da parede
-            print("anda devagar")
+        if min_front < safe_distance:
+            forward_speed = medium_speed  # anda devagar perto da parede
+        elif min_front < critical_distance:
+            forward_speed = min_speed
         else:
-            forward_speed = 0.3  # anda rápido se longe da parede e bem alinhado
+            forward_speed = default_speed  # anda rápido se longe da parede e bem alinhado
 
+    """ # Wall following
+    if min_front < critical_distance:
+        if min_left < min_right:  # Parede à esquerda -> segue para direita
+            rotation_speed = -0.6
+            forward_speed = default_speed if min_front > critical_distance/2 else 0.1
+        else:  # Parede à direita -> segue para esquerda
+            rotation_speed = 0.6
+            forward_speed = default_speed if min_front > critical_distance/2 else 0.1
+    else:
+        k_rot = 0.2  # gira normal
+        rotation_speed = k_rot * heading_error """
+    
     # Variação do ganho de rotação baseada na distância ao obstáculo
-    if min_distance < 30:
-        print
-        k_rot = 1.0  # gira mais forte se perto
+    if min_front < critical_distance:
+        k_rot = 2.0  # gira mais forte se perto
     else:
         k_rot = 0.2  # gira normal
 
-    rotation_speed = k_rot * heading_error
+    rotation_speed = k_rot * heading_error        
 
 
     # Normalisation des vitesses
@@ -177,9 +212,9 @@ def potential_field_control(lidar, current_pose, goal_pose):
         "rotation": rotation_speed
     }
 
-    print(f"pose: {current_pose}")
+    """ print(f"pose: {current_pose}")
     print(f"heading_error: {heading_error}")
     print(f"Distance: {distance:.2f}, Gradient att: {grad_att}, Gradient rep: {grad_rep}")
-    print(f"Command: forward={forward_speed:.2f}, rotation={rotation_speed:.2f}")
+    print(f"Command: forward={forward_speed:.2f}, rotation={rotation_speed:.2f}") """
 
     return command

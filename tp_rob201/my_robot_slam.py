@@ -47,11 +47,53 @@ class MyRobotSlam(RobotAbstract):
         # storage for pose after localization
         self.corrected_pose = np.array([0, 0, 0])
 
+        # points to explore
+        self.waypoints = [
+            [0, -400, 0],      # Ponto 1: frente
+            [-200, -500, 0],    # Ponto 2: diagonal direita
+            [-500, -500, 0],      # Ponto 3: esquerda
+            [-200, -500, 0],     # Ponto 4: trás
+            [-200, -200, 0],
+            [-400, -100, 0],
+            [-200, 50, 0],
+            [-600, 0, 0],
+            [-800, -100, 0],
+            [-600, -200, 0],
+            [-800, -200, 0],
+            [-850, -350, 0],
+            [-800, -300, 0],
+            [-900, -250, 0],
+            [-900, 0, 0]
+                                  
+        ]
+        self.current_waypoint_idx = 0
+        self.distance_threshold = 50  
+
+
+    
     def control(self):
         """
         Main control function executed at each time step
         """
-        return self.control_tp1()
+        # Récupération de la position actuelle du robot via l'odométrie
+        pose = self.odometer_values()
+        
+        # TP 3 :
+        # Mise à jour de la carte avec les données du lidar et la position odométrique
+        self.tiny_slam.update_map(self.lidar(), pose)
+
+        self.occupancy_grid.display_cv(pose, self.waypoints[self.current_waypoint_idx])
+
+        # TP 4 :
+        # Localisation
+        score = self.tiny_slam.localise(self.lidar(), pose)
+
+        # Atualiza mapa se score for suficientemente alto
+        if score > 20:  # Ajustar esse limiar empiricamente
+            corrected_pose = self.tiny_slam.get_corrected_pose(pose)
+            self.tiny_slam.update_map(self.lidar(), corrected_pose) 
+        
+        return self.control_tp2()  
 
     def control_tp1(self):
         """
@@ -70,9 +112,13 @@ class MyRobotSlam(RobotAbstract):
         Main control function with full SLAM, random exploration and path pla nning
         """
         pose = self.odometer_values()
-        goal = [100,0,0]
+        current_goal = self.waypoints[self.current_waypoint_idx]
+        
+        # Verifica se o waypoint foi alcançado
+        distance_to_goal = np.linalg.norm(np.array(current_goal[:2]) - np.array(pose[:2]))
+        if distance_to_goal < self.distance_threshold:
+            self.current_waypoint_idx = (self.current_waypoint_idx + 1) % len(self.waypoints)
+            print(f"Waypoint {self.current_waypoint_idx} reached ! Next: {self.waypoints[self.current_waypoint_idx]}")
 
-        # Compute new command speed to perform obstacle avoidance
-        command = potential_field_control(self.lidar(), pose, goal)
-
+        command = potential_field_control(self.lidar(), pose, current_goal)
         return command
