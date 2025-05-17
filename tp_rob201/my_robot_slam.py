@@ -77,21 +77,25 @@ class MyRobotSlam(RobotAbstract):
         """
         # Récupération de la position actuelle du robot via l'odométrie
         pose = self.odometer_values()
-        
+        self.counter += 1
+            
         # TP 3 :
         # Mise à jour de la carte avec les données du lidar et la position odométrique
-        self.tiny_slam.update_map(self.lidar(), pose)
-
-        self.occupancy_grid.display_cv(pose, self.waypoints[self.current_waypoint_idx])
+        """ self.tiny_slam.update_map(self.lidar(), pose)
+        if self.counter % 10 == 0:
+            self.occupancy_grid.display_cv(pose, self.waypoints[self.current_waypoint_idx]) """
 
         # TP 4 :
         # Localisation
         score = self.tiny_slam.localise(self.lidar(), pose)
+        corrected_pose = self.tiny_slam.get_corrected_pose(pose)
+        print(f"Final Score = {score:.1f}")
 
-        # Atualiza mapa se score for suficientemente alto
-        if score > 20:  # Ajustar esse limiar empiricamente
-            corrected_pose = self.tiny_slam.get_corrected_pose(pose)
-            self.tiny_slam.update_map(self.lidar(), corrected_pose) 
+        if -score > 16 or self.counter < 20:
+            self.tiny_slam.update_map(self.lidar(), corrected_pose)
+
+        if self.counter % 10 == 0:
+            self.occupancy_grid.display_cv(corrected_pose, self.waypoints[self.current_waypoint_idx])
         
         return self.control_tp2()  
 

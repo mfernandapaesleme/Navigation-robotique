@@ -77,51 +77,60 @@ class TinySlam:
 
         if odom_pose_ref is None:
             odom_pose_ref = self.odom_pose_ref
-
-        dx, dy, dtheta = odom_pose - self.odom_pose_init  # odom_pose_ref
-
-        theta = odom_pose_ref[2]
-
-        # Compute the corrected pose in the map frame using the odom frame reference
-        corrected_x = odom_pose_ref[0] + dx * np.cos(theta) - dy * np.sin(theta)
-        corrected_y = odom_pose_ref[1] + dx * np.sin(theta) + dy * np.cos(theta)
+        
+        # Get displacements from initial pose
+        dx = odom_pose[0] - self.odom_pose_init[0]
+        dy = odom_pose[1] - self.odom_pose_init[1]
+        dtheta = odom_pose[2] - self.odom_pose_init[2]
+        
+        # Apply transformation
+        corrected_x = odom_pose_ref[0] + dx * np.cos(odom_pose_ref[2]) - dy * np.sin(odom_pose_ref[2])
+        corrected_y = odom_pose_ref[1] + dx * np.sin(odom_pose_ref[2]) + dy * np.cos(odom_pose_ref[2])
         corrected_theta = odom_pose_ref[2] + dtheta
+        
+        # Normalize angle
+        corrected_theta = np.arctan2(np.sin(corrected_theta), np.cos(corrected_theta))
+        
+        # Normalize angle to [-pi, pi]
+        corrected_theta = np.arctan2(np.sin(corrected_theta), np.cos(corrected_theta))
+        """ print(f"Odom: {odom_pose} | Odom_init: {self.odom_pose_init}")
+        print(f"Displacement: dx={dx:.2f}, dy={dy:.2f}, dtheta={dtheta:.2f}")
+        print(f"Reference: x={odom_pose_ref[0]:.2f}, y={odom_pose_ref[1]:.2f}, theta={odom_pose_ref[2]:.2f}")
+        print(f"Corrected: x={corrected_x:.2f}, y={corrected_y:.2f}, theta={corrected_theta:.2f}") """
 
         corrected_pose = np.array([corrected_x, corrected_y, corrected_theta])
-
         return corrected_pose
+    
 
-    def localise(self, lidar, raw_odom_pose):
-        """
-        Compute the robot position wrt the map, and updates the odometry reference
-        lidar : placebot object with lidar data
-        odom : [x, y, theta] nparray, raw odometry position
-        """
-        # TODO for TP4
-
-        best_score = 0
-        best_score = self._score(lidar, self.get_corrected_pose(raw_odom_pose))
+    def localise(self, lidar, raw_odom_pose, max_iter=30):
+        """Constrained localization with stability checks"""
+        current_pose = self.get_corrected_pose(raw_odom_pose)
+        best_score = self._score(lidar, current_pose)
+        
+        # Only attempt localization if current score is poor
+        if best_score > 50:  # Good enough score threshold
+            return best_score
+            
         best_ref = self.odom_pose_ref.copy()
         
-        no_improve = 0
-        sigma = 0.1  # Standard deviation for the random offset
-        max_no_improve = 10  # Maximum number of iterations without improvement
-
-        while no_improve < max_no_improve:
-            # Generate a random offset for the odom reference
-            offset = np.random.normal(0, sigma, 3)  # x, y, theta
-            new_ref = self.odom_pose_ref + offset
-            new_pose = self.get_corrected_pose(raw_odom_pose, new_ref)
-            new_score = self._score(lidar, new_pose)
+        # Tight search constraints (meters, radians)
+        search_sigma = [1, 1, 0.1]  # x,y,theta
+        
+        for _ in range(max_iter):
+            offset = np.random.normal(0, search_sigma, 3)
+            test_ref = best_ref + offset
+            test_pose = self.get_corrected_pose(raw_odom_pose, test_ref)
+            test_score = self._score(lidar, test_pose)
             
-            if new_score > best_score:
-                best_score = new_score
-                best_ref = new_ref
-                no_improve = 0
-            else:
-                no_improve += 1
-
-        self.odom_pose_ref = best_ref
+            # Only accept significant improvements
+            if test_score > best_score + 10:  
+                best_score = test_score
+                best_ref = test_ref
+        
+        # Only update reference if major improvement
+        if best_score > 50:  # Absolute quality threshold
+            self.odom_pose_ref = best_ref
+        
         return best_score
     
     def conv_donnes(self, ranges, ray_angles, pose, isWall):

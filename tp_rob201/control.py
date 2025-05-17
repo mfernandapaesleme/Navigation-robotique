@@ -102,9 +102,9 @@ def potential_field_control(lidar, current_pose, goal_pose):
     # Parameters
     safe_distance = 150  # Start reacting when obstacle is within this distance
     critical_distance = 50  # Distance for more aggressive avoidance
-    default_speed = 0.4  # Normal forward speed
-    medium_speed = 0.3  # Speed when approaching obstacles
-    min_speed = 0.2  # Minimum speed when approaching obstacles
+    default_speed = 0.3  # Normal forward speed
+    medium_speed = 0.2 # Speed when approaching obstacles
+    min_speed = 0.1  # Minimum speed when approaching obstacles
     
     # Initialize speeds
     speed = default_speed
@@ -153,17 +153,8 @@ def potential_field_control(lidar, current_pose, goal_pose):
     heading_error = np.arctan2(np.sin(heading_error), np.cos(heading_error))
 
     front_indices = (160,200)
-    left_indices = (250,290)
-    right_indices = (70, 110)
-    
-    # Get minimum distance in each region
     front_distances = [lidar_distances[i] for i in front_indices]
-    left_distances = [lidar_distances[i] for i in left_indices]
-    right_distances = [lidar_distances[i] for i in right_indices]
-    
     min_front = min(front_distances) if front_distances else float('inf')
-    min_left = min(left_distances) if left_distances else float('inf')
-    min_right = min(right_distances) if right_distances else float('inf')
     # print(f"min_front: {min_front:.2f}") #min_left: {min_left:.2f}, min_right: {min_right:.2f}")
 
     # heading_error: radianos (-pi a pi)
