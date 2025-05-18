@@ -22,6 +22,7 @@ class OccupancyGrid:
         self.y_min_world = y_min
         self.y_max_world = y_max
         self.resolution = resolution
+        self.max_grid_value = 40
 
         self.x_max_map, self.y_max_map = self.conv_world_to_map(
             self.x_max_world, self.y_max_world)

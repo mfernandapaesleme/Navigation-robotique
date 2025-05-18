@@ -102,12 +102,12 @@ def potential_field_control(lidar, current_pose, goal_pose):
     # Parameters
     safe_distance = 150  # Start reacting when obstacle is within this distance
     critical_distance = 50  # Distance for more aggressive avoidance
-    default_speed = 0.3  # Normal forward speed
+    default_speed = 0.2  # Normal forward speed
     medium_speed = 0.2 # Speed when approaching obstacles
     min_speed = 0.1  # Minimum speed when approaching obstacles
     
     # Initialize speeds
-    speed = default_speed
+    forward_speed = default_speed
     rotation_speed = 0.0
     
     # Condition d'arrêt
@@ -191,8 +191,13 @@ def potential_field_control(lidar, current_pose, goal_pose):
     else:
         k_rot = 0.2  # gira normal
 
-    rotation_speed = k_rot * heading_error        
+    rotation_speed = k_rot * heading_error
 
+    if min_front < critical_distance and 0 < heading_error < 0.01 :
+        rotation_speed = 0.5 
+
+    if min_front < critical_distance and 0 > heading_error > -0.01 :
+        rotation_speed = -0.5
 
     # Normalisation des vitesses
     forward_speed = np.clip(forward_speed, -1.0, 1.0)

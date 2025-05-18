@@ -40,25 +40,29 @@ class TinySlam:
         # Compute the absolute angles of the rays
         world_angles = theta + angles
         # Compute the end points of the rays (polaires) in world coordinates (cartesian)
-        world_x = x + ranges * np.cos(theta + world_angles)
-        world_y = y + ranges * np.sin(theta + world_angles)
+        world_x = x + ranges * np.cos(world_angles)
+        world_y = y + ranges * np.sin(world_angles)
 
         world_end_x, world_end_y = self.grid.conv_world_to_map(world_x, world_y)
 
         # Keep only values inside the map
-        isValid = (world_end_x < self.grid.x_max_map) & (world_end_x >= 0) & (world_end_y < self.grid.y_max_map) & (world_end_y >= 0)
+        isValid = (world_end_x < self.grid.occupancy_map.shape[0]) & (world_end_x >= 0) & (world_end_y < self.grid.occupancy_map.shape[1]) & (world_end_y >= 0)
 
         valid_world_end_x = world_end_x[isValid]
         valid_world_end_y = world_end_y[isValid]
 
-        # Convert the world end points to integer indices
-        valid_world_end_x = valid_world_end_x.astype(int)
-        valid_world_end_y = valid_world_end_y.astype(int)
 
+        # Convert the world end points to integer indices
+        """ valid_world_end_x = valid_world_end_x.astype(int)
+        valid_world_end_y = valid_world_end_y.astype(int)
+ """
         log_probs = self.grid.occupancy_map[valid_world_end_x, valid_world_end_y] # Get the log-odds values from the occupancy grid
+        # print(f"Log-odds values: {log_probs}")
         # Compute the log-odds score  
         score = np.sum(log_probs)  
-       
+        # print(f"Score: {score:.2f} | Valid points: {len(valid_world_end_x)}")
+        #max score:+360*40 = 14400 --> All points are obstacles
+        #min score:+360*40 =-14400 --> None of the points are obstacles
         return score
 
     def get_corrected_pose(self, odom_pose, odom_pose_ref=None):
@@ -82,10 +86,13 @@ class TinySlam:
         dx = odom_pose[0] - self.odom_pose_init[0]
         dy = odom_pose[1] - self.odom_pose_init[1]
         dtheta = odom_pose[2] - self.odom_pose_init[2]
-        
+
+        alpha = np.arctan2(dy, dx)
+        d0 = np.sqrt(dx**2 + dy**2)
+
         # Apply transformation
-        corrected_x = odom_pose_ref[0] + dx * np.cos(odom_pose_ref[2]) - dy * np.sin(odom_pose_ref[2])
-        corrected_y = odom_pose_ref[1] + dx * np.sin(odom_pose_ref[2]) + dy * np.cos(odom_pose_ref[2])
+        corrected_x = odom_pose_ref[0] + d0 * np.cos(odom_pose_ref[2] + alpha)
+        corrected_y = odom_pose_ref[1] + d0 * np.sin(odom_pose_ref[2] + alpha)
         corrected_theta = odom_pose_ref[2] + dtheta
         
         # Normalize angle
@@ -102,24 +109,25 @@ class TinySlam:
         return corrected_pose
     
 
-    def localise(self, lidar, raw_odom_pose, max_iter=30):
+    def localise(self, lidar, pose, max_iter=150):
         """Constrained localization with stability checks"""
-        current_pose = self.get_corrected_pose(raw_odom_pose)
+        current_pose = self.get_corrected_pose(pose)
         best_score = self._score(lidar, current_pose)
+        # print(f"Initial Score: {best_score:.2f}")
         
         # Only attempt localization if current score is poor
-        if best_score > 50:  # Good enough score threshold
+        if best_score > 2000:  # Good enough score threshold
             return best_score
             
         best_ref = self.odom_pose_ref.copy()
         
         # Tight search constraints (meters, radians)
-        search_sigma = [1, 1, 0.1]  # x,y,theta
+        search_sigma = [0.1, 0.1, 1]  # x,y,theta
         
         for _ in range(max_iter):
-            offset = np.random.normal(0, search_sigma, 3)
+            offset = np.random.normal(0, search_sigma, size=3)
             test_ref = best_ref + offset
-            test_pose = self.get_corrected_pose(raw_odom_pose, test_ref)
+            test_pose = self.get_corrected_pose(pose, test_ref)
             test_score = self._score(lidar, test_pose)
             
             # Only accept significant improvements
@@ -128,7 +136,7 @@ class TinySlam:
                 best_ref = test_ref
         
         # Only update reference if major improvement
-        if best_score > 50:  # Absolute quality threshold
+        if best_score > 2000:  # Absolute quality threshold
             self.odom_pose_ref = best_ref
         
         return best_score
@@ -143,8 +151,8 @@ class TinySlam:
                 
         # Conversion en coordonnées cartésiennes dans le repère robot
         if isWall == True:
-            ray_x_robot = (ranges + 10) * np.cos(ray_angle_world)
-            ray_y_robot = (ranges + 10) * np.sin(ray_angle_world)
+            ray_x_robot = (ranges - 10) * np.cos(ray_angle_world)
+            ray_y_robot = (ranges - 10) * np.sin(ray_angle_world)
         else:
             ray_x_robot = ranges * np.cos(ray_angle_world)
             ray_y_robot = ranges * np.sin(ray_angle_world)
@@ -173,7 +181,7 @@ class TinySlam:
         val_free = np.log(p_free / (1 - p_free))
         val_occ = np.log(p_occ / (1 - p_occ)) """ 
         val_free = -1
-        val_occ = 1
+        val_occ = 2
 
         # Récupération des données du lidar
         ranges = lidar.get_sensor_values()
@@ -186,16 +194,15 @@ class TinySlam:
         self.grid.add_map_points(points_x, points_y, val_occ)
 
         # Stockage des points pour mise à jour de la carte
-        # points_x, points_y = self.conv_donnes(ranges, ray_angles, pose, True)
+        points_x, points_y = self.conv_donnes(ranges, ray_angles, pose, True)
     
         # Mise à jour de la carte pour les zones libres (trajectoire du rayon)
         for xi, yi in zip(points_x, points_y):
             self.grid.add_value_along_line(pose[0], pose[1], xi, yi, val_free)
         
         # Clip the occupancy grid values to prevent overflow
-        max_log_odds = 40  # Maximum log-odds value
-        min_log_odds = -40  # Minimum log-odds value
-        self.grid.occupancy_map = np.clip(self.grid.occupancy_map, min_log_odds, max_log_odds)
+        self.grid.occupancy_map = np.clip(self.grid.occupancy_map, -self.grid.max_grid_value, self.grid.max_grid_value)
+
 
     """ def compute(self):
         Useless function, just for the exercise on using the profiler
