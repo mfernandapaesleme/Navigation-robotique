@@ -69,7 +69,8 @@ class MyRobotSlam(RobotAbstract):
             [-750, -100, 0],
             [-800, -150, 0],
             [-780, -250, 0],
-            [-780, -350, 0],
+            [-810, -300, 0], 
+            [-810, -350, 0],
             [-900, -380, 0],
             [-780, -350, 0], 
             [-780, -260, 0],
@@ -139,20 +140,26 @@ class MyRobotSlam(RobotAbstract):
             # PLANEJAMENTO DO CAMINHO (apenas uma vez)
             if not self.path_found:
                 print("Iniciando planejamento de caminho...")
-                
+                self.debug_occupancy_grid(self.tiny_slam.grid.occupancy_map, title="Grid before Thresholding")
                 # Processa a grade de ocupação para planejamento
-                # 1. Aplica threshold: valores > 35 viram obstáculos
+                # Aplica threshold: valores > 0.5 viram obstáculos
                 processed_grid = self.planner.occupancy_grid_threshold(
-                    self.tiny_slam.grid.occupancy_map, threshold=35)
+                    self.tiny_slam.grid.occupancy_map, threshold=0.5) 
                 
-                # 2. Dilata obstáculos para margem de segurança
+                # Debugging visual da grade após thresholding
+                self.debug_occupancy_grid(processed_grid, title="Grid After Thresholding")
+                
+                # Dilata obstáculos para margem de segurança
                 processed_grid = self.planner.occupancy_grid_dilate(
-                    processed_grid, radius=7)
+                    processed_grid, radius=5)
                 
-                # 3. Atualiza a grade do planner
+                 # Debugging visual da grade após dilatação
+                self.debug_occupancy_grid(processed_grid,title="Grid After Dilation")
+
+                # Atualiza a grade do planner
                 self.planner.grid.occupancy_map = processed_grid
                 
-                # 4. Planeja caminho da posição atual para origem (0,0,0)
+                # Planeja caminho da posição atual para origem (0,0,0)
                 path_cells = self.planner.plan(corrected_pose, np.array([0, 0, 0]))
                 
                 if path_cells is not None:
@@ -210,6 +217,19 @@ class MyRobotSlam(RobotAbstract):
             # Se não há caminho, para
             return {"forward": 0, "rotation": 0}
         
+    def debug_occupancy_grid(self, grid, title="Occupancy Grid"):
+        """
+        Visualize the occupancy grid using matplotlib.
+        grid : 2D numpy array representing the occupancy grid
+        title : Title for the plot
+        """
+        plt.figure(figsize=(10, 8))
+        plt.imshow(grid.T, origin='lower', cmap='gray', interpolation='nearest')
+        plt.title(title)
+        plt.colorbar(label='Occupancy Value')
+        plt.xlabel('X Coordinate')
+        plt.ylabel('Y Coordinate')
+        plt.show()
 
     def control_tp1(self):
         """
@@ -241,11 +261,11 @@ class MyRobotSlam(RobotAbstract):
         """
         pose = self.odometer_values()
         # for tp4
-        corrected_pose = self.corrected_pose
+        corrected_pose = self.tiny_slam.get_corrected_pose(pose)
         current_goal = self.waypoints[self.current_waypoint_idx]
         
         # Verifica se o waypoint foi alcançado
-        distance_to_goal = np.linalg.norm(np.array(current_goal[:2]) - np.array(corrected_pose[:2]))
+        distance_to_goal = np.linalg.norm(np.array(current_goal[:2]) - np.array(pose[:2]))
         if distance_to_goal < self.distance_threshold:
             self.current_waypoint_idx = (self.current_waypoint_idx + 1) % len(self.waypoints)
             print(f"Waypoint {self.current_waypoint_idx} reached ! Next: {self.waypoints[self.current_waypoint_idx]}")
@@ -253,5 +273,5 @@ class MyRobotSlam(RobotAbstract):
         if self.current_waypoint_idx >= len(self.waypoints)-1:
             print("All waypoints reached !")
             self.goal_reached = True
-        command = potential_field_control(self.lidar(), corrected_pose, current_goal)
+        command = potential_field_control(self.lidar(), pose, current_goal)
         return command

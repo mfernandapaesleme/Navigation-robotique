@@ -14,7 +14,7 @@ class Planner:
         """Atualiza a grade de ocupação"""
         self.grid = occupancy_grid
         
-    def occupancy_grid_threshold(self, occupancy_grid, threshold=25):
+    def occupancy_grid_threshold(self, occupancy_grid, threshold=0.5):
         """
         Aplica um threshold na grade de ocupação
         - Valores > threshold viram 1 (obstáculo)
@@ -41,9 +41,11 @@ class Planner:
                 if dx == 0 and dy == 0:
                     continue
                 if (0 < x + dx < self.grid.x_max_map) and (0 < y + dy < self.grid.y_max_map):
-                    if self.grid.occupancy_map[x + dx, y + dy] < 35:
+                    print(f"Occupancy value at {x + dx}, {y + dy}: {self.grid.occupancy_map[x + dx, y + dy]}")
+                    if self.grid.occupancy_map[x + dx, y + dy] < 0.5:
                         neighbour = (x + dx, y + dy)
                         neighbours.append(neighbour)
+        print(f"Current cell: {current_cell}, Neighbours: {neighbours}")
                 
         return neighbours
     

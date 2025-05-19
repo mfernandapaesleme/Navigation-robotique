@@ -97,7 +97,7 @@ def potential_field_control(lidar, current_pose, goal_pose):
     distance = np.linalg.norm(distance_vector)
     
     # Paramètres
-    K_goal = 1.0         # Coefficient attractif
+    K_goal = 1         # Coefficient attractif
     d_lim = 100         # Rayon du potentiel quadratique
     stop_threshold = 10  # Seuil d'arrêt
     dsafe = 500         # Distance de sécurité pour l'obstacle
@@ -209,16 +209,19 @@ def potential_field_control(lidar, current_pose, goal_pose):
     
     # Wall following
     if min_front < critical_distance: 
-        if 0.01 < heading_error < 0.1 or -0.1 < heading_error < -0.01:
+        if 0 < heading_error < 0.1 or -0.1 < heading_error < 0:
             print("perto da parede e meio alinhado girando um pouco")
-            k_rot = 2.5 #sipa da p aumentar
-
-        elif 0 < heading_error < 0.01 or -0.01 < heading_error < 0:
-            print("perto da parede e muito alinhado girando muito")
-            k_rot = 100
-            forward_speed = default_speed if min_front > critical_distance/2 else 0.1
+            k_rot = 4 #sipa da p aumentar
         else:
             k_rot = 2.5
+
+        """ elif 0 < heading_error < 0.01 or -0.01 < heading_error < 0:
+            print("perto da parede e muito alinhado girando muito")
+            k_rot = 100
+            forward_speed = default_speed if min_front > critical_distance/2 else 0.1 """
+        
+        """ else:
+            k_rot = 2.5 """
         
         """ if is_stuck(current_pose):
             print("estou preso, ativar wall following")
