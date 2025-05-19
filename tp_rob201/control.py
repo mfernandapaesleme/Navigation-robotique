@@ -220,7 +220,7 @@ def potential_field_control(lidar, current_pose, goal_pose):
         else:
             k_rot = 2.5
         
-        if is_stuck(current_pose):
+        """ if is_stuck(current_pose):
             print("estou preso, ativar wall following")
             wall_following = True
             if wall_following_direction is None or wall_following_direction == "right":
@@ -238,7 +238,7 @@ def potential_field_control(lidar, current_pose, goal_pose):
                     rotation_speed = -0.5
                     forward_speed = 0.1
                     if min_right > critical_distance:
-                        wall_following = False
+                        wall_following = False """
         
     else:
         k_rot = 0.2  # gira normal

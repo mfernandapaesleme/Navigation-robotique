@@ -61,18 +61,18 @@ class MyRobotSlam(RobotAbstract):
             [-400, 0, 0],
             [-200, 10, 0],
             [-600, 10, 0],
-            [-800, -100, 0],
-            [-800, -150, 0],
+            [-780, -100, 0],
+            [-780, -150, 0],
             [-700, -150, 0],
             [-700, -200, 0],
             [-690, -200, 0],
             [-750, -100, 0],
             [-800, -150, 0],
-            [-800, -250, 0],
-            [-800, -400, 0],
-            [-900, -430, 0],
-            [-800, -400, 0], 
-            [-800, -260, 0],
+            [-780, -250, 0],
+            [-780, -350, 0],
+            [-900, -380, 0],
+            [-780, -350, 0], 
+            [-780, -260, 0],
             [-900, -250, 0],
             [-950, -150, 0],
             [-950, -50, 0],
@@ -141,13 +141,13 @@ class MyRobotSlam(RobotAbstract):
                 print("Iniciando planejamento de caminho...")
                 
                 # Processa a grade de ocupação para planejamento
-                # 1. Aplica threshold: valores > -0.5 viram obstáculos
+                # 1. Aplica threshold: valores > 35 viram obstáculos
                 processed_grid = self.planner.occupancy_grid_threshold(
-                    self.tiny_slam.grid.occupancy_map, threshold=-0.5)
+                    self.tiny_slam.grid.occupancy_map, threshold=35)
                 
                 # 2. Dilata obstáculos para margem de segurança
                 processed_grid = self.planner.occupancy_grid_dilate(
-                    processed_grid, radius=5)
+                    processed_grid, radius=7)
                 
                 # 3. Atualiza a grade do planner
                 self.planner.grid.occupancy_map = processed_grid
@@ -178,7 +178,6 @@ class MyRobotSlam(RobotAbstract):
                 traj_array = np.array([[p[0] for p in self.paths],[p[1] for p in self.paths]])
                 objective = self.paths[-1] # Último ponto é o objetivo final
 
-                print(f"Objetivo: {objective}, no mapa")
                 # Exibir mapa e trajetória
                 if self.counter % 10 == 0:
                     self.occupancy_grid.display_cv(corrected_pose, objective, traj_array)
@@ -241,16 +240,18 @@ class MyRobotSlam(RobotAbstract):
         Main control function with full SLAM, random exploration and path planning
         """
         pose = self.odometer_values()
+        # for tp4
+        corrected_pose = self.corrected_pose
         current_goal = self.waypoints[self.current_waypoint_idx]
         
         # Verifica se o waypoint foi alcançado
-        distance_to_goal = np.linalg.norm(np.array(current_goal[:2]) - np.array(pose[:2]))
+        distance_to_goal = np.linalg.norm(np.array(current_goal[:2]) - np.array(corrected_pose[:2]))
         if distance_to_goal < self.distance_threshold:
             self.current_waypoint_idx = (self.current_waypoint_idx + 1) % len(self.waypoints)
             print(f"Waypoint {self.current_waypoint_idx} reached ! Next: {self.waypoints[self.current_waypoint_idx]}")
         
-        if self.current_waypoint_idx == 26:
+        if self.current_waypoint_idx >= len(self.waypoints)-1:
             print("All waypoints reached !")
             self.goal_reached = True
-        command = potential_field_control(self.lidar(), pose, current_goal)
+        command = potential_field_control(self.lidar(), corrected_pose, current_goal)
         return command

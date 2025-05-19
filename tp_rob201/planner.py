@@ -14,7 +14,7 @@ class Planner:
         """Atualiza a grade de ocupação"""
         self.grid = occupancy_grid
         
-    def occupancy_grid_threshold(self, occupancy_grid, threshold=0.5):
+    def occupancy_grid_threshold(self, occupancy_grid, threshold=25):
         """
         Aplica um threshold na grade de ocupação
         - Valores > threshold viram 1 (obstáculo)
@@ -40,16 +40,12 @@ class Planner:
             for dy in [-1, 0, 1]:
                 if dx == 0 and dy == 0:
                     continue
-                neighbour = (x + dx, y + dy)
-                neighbours.append(neighbour)
-
-        # Filtra vizinhos válidos dentro dos limites do mapa
-        valid_neighbours = [
-            n for n in neighbours 
-            if (0 <= n[0] < self.grid.x_max_map) and (0 <= n[1] < self.grid.y_max_map)
-        ]
-        
-        return valid_neighbours
+                if (0 < x + dx < self.grid.x_max_map) and (0 < y + dy < self.grid.y_max_map):
+                    if self.grid.occupancy_map[x + dx, y + dy] < 35:
+                        neighbour = (x + dx, y + dy)
+                        neighbours.append(neighbour)
+                
+        return neighbours
     
     def heuristic(self, cell1, cell2):
         """
@@ -71,37 +67,43 @@ class Planner:
 
         open_set = []
         heapq.heappush(open_set, (0 + self.heuristic(start, goal), start))
+
+        # For node n , cameFrom [ n] is the node immediately preceding it on the cheapest path from the start to n currently known
         came_from = {}
+
+        # For node n , gScore [n] is the cost of the cheapest path from start to n currently known
         g_score = {tuple(start): 0}
+
+        #  For node n , fScore [n] := gScore [ n] + h( n). fScore [n ] represents our current best guess as to 
+        #  how cheap a path could be from start to finish if it goes through n.
         f_score = {tuple(start): self.heuristic(start, goal)}
 
         while open_set:
             current = heapq.heappop(open_set)[1]
             if np.array_equal(current, goal):
+                print("Path found reconstructing")
                 return self.reconstruct_path(came_from, current)
 
             for neighbour in self.get_neighbours(current):
-                current_np = np.array(current)
-                neighbour_np = np.array(neighbour)
+                tentative_g_score = g_score[tuple(current)] + self.heuristic(current, neighbour)
 
-                tentative_g_score = g_score[tuple(current)] + np.linalg.norm(neighbour_np - current_np)
                 if tuple(neighbour) not in g_score or tentative_g_score < g_score[tuple(neighbour)]:
                     came_from[tuple(neighbour)] = current
                     g_score[tuple(neighbour)] = tentative_g_score
                     f_score[tuple(neighbour)] = tentative_g_score + self.heuristic(neighbour, goal)
-                    if tuple(neighbour) not in [i[1] for i in open_set]:
-                        heapq.heappush(open_set, (f_score[tuple(neighbour)], neighbour))
-   
+                    heapq.heappush(open_set, (f_score[tuple(neighbour)], neighbour))
 
-        return None  # Return None if no path is found
+        return None  # Se não encontrou caminho
+    
+
 
     def reconstruct_path(self, came_from, current):
-        total_path = [current]
+        path = [current]
         while tuple(current) in came_from:
             current = came_from[tuple(current)]
-            total_path.append(current)
-        return total_path[::-1]  # Return reversed path
-
+            path.append(current)
+        path.reverse()
+        return path
 
 
     def explore_frontiers(self):
